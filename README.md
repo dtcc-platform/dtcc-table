@@ -1,4 +1,4 @@
-# DTCC-Table
+# DTCC Table
 
 Workflow for generating 3D printable tiles of a city model using the [DTCC platform](https://github.com/dtcc-platform/dtcc) and Blender.  
 The goal is to create a physical table surface with scaled, magnetized city tiles.
@@ -11,7 +11,7 @@ The goal is to create a physical table surface with scaled, magnetized city tile
 
 ```
 
-DTCC-TABLE/
+DTCC TABLE/
 ├─ data/                  # Input datasets
 │   ├─ BuildingsKept.gpkg
 │   └─ BuildingsRemoved.gpkg
