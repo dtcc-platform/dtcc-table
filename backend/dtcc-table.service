@@ -8,7 +8,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/dtcc-table/backend
 Environment="PATH=/home/ubuntu/dtcc-table/backend/venv/bin"
 EnvironmentFile=/home/ubuntu/dtcc-table/backend/.env
-ExecStart=/home/ubuntu/dtcc-table/backend/venv/bin/python app.py
+ExecStart=/home/ubuntu/dtcc-table/backend/venv/bin/python3.11 app.py
 Restart=on-failure
 RestartSec=10
 
