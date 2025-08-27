@@ -167,8 +167,20 @@
                     </p>
                     {% if file.bounding_box %}
                     <p style="font-size: 0.75rem; color: #667eea; margin-top: 0.25rem; font-weight: 600;">
-                        Size: {{ file.bounding_box }} m
+                        Actual Size: {{ file.bounding_box }} m
                     </p>
+                    {% endif %}
+                    {% if file.processed_size %}
+                        {% set proc_parts = file.processed_size.split(':') %}
+                        {% if proc_parts[0] == 'clipped' %}
+                        <p style="font-size: 0.75rem; color: #f56565; margin-top: 0.25rem;">
+                            Clipped Size: {{ proc_parts[1] }} m
+                        </p>
+                        {% elif proc_parts[0] == 'expanded' %}
+                        <p style="font-size: 0.75rem; color: #48bb78; margin-top: 0.25rem;">
+                            Expanded Size: {{ proc_parts[1] }} m
+                        </p>
+                        {% endif %}
                     {% endif %}
                     {% if file.origin %}
                     <p style="font-size: 0.75rem; color: #667eea; margin-top: 0.25rem;">

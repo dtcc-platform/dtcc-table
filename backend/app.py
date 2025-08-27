@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
-from PIL import Image
+from PIL import Image, ImageDraw
 import secrets
 import os
 import shutil
@@ -75,6 +75,7 @@ class UploadedFile(Base):
     file_type = Column(String)
     bounding_box = Column(String)  # Format: "width x height" in meters
     origin = Column(String)  # Format: "x, y" in meters
+    processed_size = Column(String)  # For GeoPackages: stores "clipped" or "expanded" with size
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     uploaded_by = Column(String)
     project_id = Column(Integer, ForeignKey("projects.id"))
@@ -475,7 +476,6 @@ def generate_video_thumbnail(input_path: str, output_path: str, size=(200, 200))
             return True
         else:
             # Create a simple placeholder if the file doesn't exist
-            from PIL import Image, ImageDraw
             img = Image.new('RGB', size, color='#4a5568')
             draw = ImageDraw.Draw(img)
             # Draw a play button
@@ -548,6 +548,105 @@ def generate_geopackage_thumbnail(gpkg_path, thumbnail_path):
         except:
             pass
         img.save(thumbnail_path)
+
+def rasterize_geopackage(gpkg_path, output_path, project_bounds, project_origin, resolution=1.0):
+    """
+    Rasterize GeoPackage to match project bounds.
+    
+    Args:
+        gpkg_path: Path to the GeoPackage file
+        output_path: Path where the rasterized image will be saved
+        project_bounds: Project bounding box as "width,height" string
+        project_origin: Project origin as "x,y" string
+        resolution: Pixel size in meters (default 1.0m per pixel)
+    
+    Returns:
+        Tuple of (success, processing_type, project_size)
+        processing_type is "clipped" or "expanded" or None
+        project_size is the project bounds as string
+    """
+    import numpy as np
+    from rasterio import features
+    from shapely.geometry import box
+    
+    try:
+        # Read the GeoPackage
+        gdf = gpd.read_file(gpkg_path)
+        
+        # Convert to EPSG:3006 if not already
+        if gdf.crs and gdf.crs != 'EPSG:3006':
+            gdf = gdf.to_crs('EPSG:3006')
+        
+        # Get original bounds
+        orig_minx, orig_miny, orig_maxx, orig_maxy = gdf.total_bounds
+        
+        # Parse project bounds and origin (handle both 'x' and ',' separators)
+        if 'x' in project_bounds:
+            proj_width, proj_height = map(float, project_bounds.split('x'))
+        else:
+            proj_width, proj_height = map(float, project_bounds.split(','))
+        
+        if 'x' in project_origin:
+            proj_origin_x, proj_origin_y = map(float, project_origin.split('x'))
+        else:
+            proj_origin_x, proj_origin_y = map(float, project_origin.split(','))
+        
+        # Calculate project extent
+        proj_minx = proj_origin_x
+        proj_miny = proj_origin_y
+        proj_maxx = proj_origin_x + proj_width
+        proj_maxy = proj_origin_y + proj_height
+        
+        # Determine if clipping or expanding
+        processing_type = None
+        if (orig_minx < proj_minx or orig_miny < proj_miny or 
+            orig_maxx > proj_maxx or orig_maxy > proj_maxy):
+            processing_type = "clipped"
+        elif (orig_minx > proj_minx or orig_miny > proj_miny or 
+              orig_maxx < proj_maxx or orig_maxy < proj_maxy):
+            processing_type = "expanded"
+        
+        # Create project bounding box
+        project_box = box(proj_minx, proj_miny, proj_maxx, proj_maxy)
+        
+        # Clip GeoDataFrame to project bounds
+        gdf_clipped = gdf.clip(project_box)
+        
+        # Calculate raster dimensions
+        width_pixels = int(proj_width / resolution)
+        height_pixels = int(proj_height / resolution)
+        
+        # Create transform for the raster
+        from rasterio.transform import from_bounds
+        transform = from_bounds(proj_minx, proj_miny, proj_maxx, proj_maxy, width_pixels, height_pixels)
+        
+        # Initialize raster with black (0 values)
+        raster = np.zeros((height_pixels, width_pixels), dtype=np.uint8)
+        
+        if not gdf_clipped.empty:
+            # Rasterize the clipped geometries
+            shapes = [(geom, 255) for geom in gdf_clipped.geometry]
+            rasterized = features.rasterize(
+                shapes,
+                out_shape=(height_pixels, width_pixels),
+                transform=transform,
+                fill=0,
+                dtype=np.uint8
+            )
+            raster = rasterized
+        
+        # Convert to PIL Image and save
+        img = Image.fromarray(raster, mode='L')
+        # Convert to RGB for better compatibility
+        img_rgb = Image.new('RGB', img.size, (0, 0, 0))
+        img_rgb.paste(img, mask=img)
+        img_rgb.save(output_path, 'PNG')
+        
+        return True, processing_type, f"{proj_width},{proj_height}"
+        
+    except Exception as e:
+        print(f"Error rasterizing GeoPackage: {e}")
+        return False, None, None
 
 @app.delete("/files/{file_id}")
 async def delete_file(file_id: int, request: Request = None, db: Session = Depends(get_db)):
@@ -699,6 +798,9 @@ async def upload_file(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
+        # Initialize processed_size
+        processed_size = None
+        
         # Handle GeoPackage files differently
         if file_ext == '.gpkg':
             # Extract bounds from the GeoPackage
@@ -706,8 +808,27 @@ async def upload_file(
             bounding_box = bounds_data['bounding_box']
             origin = bounds_data['origin']
             
-            # Generate thumbnail
-            generate_geopackage_thumbnail(file_path, thumbnail_path)
+            # Generate rasterized version aligned with project bounds
+            raster_filename = f"{unique_id}_raster.png"
+            raster_path = f"static/assets/{raster_filename}"
+            
+            # Rasterize the GeoPackage according to project bounds
+            if project.bounding_box and project.origin:
+                success, processing_type, project_size = rasterize_geopackage(
+                    file_path, raster_path, project.bounding_box, project.origin
+                )
+                if success and processing_type:
+                    processed_size = f"{processing_type}:{project_size}"
+                # Update file_path to point to the rasterized version
+                file_path = raster_path
+                safe_filename = raster_filename
+            
+            # Generate thumbnail from the rasterized image or original gpkg
+            if os.path.exists(raster_path):
+                generate_image_thumbnail(raster_path, thumbnail_path)
+            else:
+                generate_geopackage_thumbnail(file_path, thumbnail_path)
+            
             file_type = "geopackage"
         else:
             # For non-geopackage files, validate placement
@@ -735,6 +856,7 @@ async def upload_file(
             file_type=file_type,
             bounding_box=bounding_box,
             origin=origin,
+            processed_size=processed_size,
             uploaded_by=user.username,
             project_id=project_id
         )
