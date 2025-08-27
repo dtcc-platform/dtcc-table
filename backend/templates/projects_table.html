@@ -1,0 +1,37 @@
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Created By</th>
+            <th>Created At</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for project in projects %}
+        <tr>
+            <td>{{ project.id }}</td>
+            <td>{{ project.name }}</td>
+            <td>{{ project.description[:50] ~ '...' if project.description|length > 50 else project.description }}</td>
+            <td>{{ project.created_by }}</td>
+            <td>{{ project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else '' }}</td>
+            <td>
+                <div class="actions">
+                    {% if user.is_admin or project.created_by == user.username %}
+                    <button @click="editProject({id: {{ project.id }}, name: '{{ project.name|e }}', description: '{{ project.description|e }}', bounding_box: '{{ project.bounding_box|e if project.bounding_box else '' }}', table_dimension: '{{ project.table_dimension|e if project.table_dimension else '' }}', origin: '{{ project.origin|e if project.origin else '' }}'})" class="btn" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Edit</button>
+                    <button hx-delete="/projects/{{ project.id }}" hx-target="#projects-table" hx-swap="innerHTML" hx-confirm="Are you sure you want to delete this project?" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Delete</button>
+                    {% else %}
+                    <span style="color: #718096; font-size: 0.875rem;">View only</span>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" style="text-align: center; color: #718096;">No projects yet. Create your first project!</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

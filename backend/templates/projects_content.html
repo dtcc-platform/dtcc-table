@@ -1,0 +1,137 @@
+<div class="container" x-data="projectManager()">
+    <button @click="showAddProject = true" class="btn" style="margin-bottom: 1rem;">New Project</button>
+    
+    <div id="message"></div>
+    
+    <div id="projects-table" hx-get="/projects-table" hx-trigger="load">
+        {% include "projects_table.html" %}
+    </div>
+    
+    <div x-show="showAddProject" class="modal" style="display: none;" x-cloak>
+        <div class="modal-content">
+            <h2>Create New Project</h2>
+            <form hx-post="/projects" hx-target="#projects-table" hx-swap="innerHTML" @htmx:after-request="showAddProject = false">
+                <div class="form-group">
+                    <label for="project-name">Project Name</label>
+                    <input type="text" id="project-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="project-description">Description</label>
+                    <textarea id="project-description" name="description" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem; min-height: 100px; resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="project-bounding-box">Real World Bounding Box (EPSG:3006) (meters)</label>
+                    <input type="text" id="project-bounding-box" name="bounding_box" placeholder="e.g., 100 x 50" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                </div>
+                <div class="form-group">
+                    <label for="project-table-dimension">Table Dimension (meters)</label>
+                    <input type="text" id="project-table-dimension" name="table_dimension" placeholder="e.g., 2 x 1" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                </div>
+                <div class="form-group">
+                    <label for="project-origin">Origin (meters)</label>
+                    <input type="text" id="project-origin" name="origin" placeholder="e.g., 0, 0" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                    <p style="color: #718096; font-size: 0.75rem; margin-top: 0.25rem;">Format: x, y coordinates</p>
+                </div>
+                <div class="actions">
+                    <button type="submit">Create Project</button>
+                    <button type="button" @click="showAddProject = false" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="showEditProject" class="modal" style="display: none;" x-cloak>
+        <div class="modal-content">
+            <h2>Edit Project</h2>
+            <form @submit.prevent="updateProject()">
+                <div class="form-group">
+                    <label for="edit-project-name">Project Name</label>
+                    <input type="text" id="edit-project-name" name="name" x-model="selectedProject.name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-project-description">Description</label>
+                    <textarea id="edit-project-description" name="description" x-model="selectedProject.description" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem; min-height: 100px; resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="edit-project-bounding-box">Real World Bounding Box (EPSG:3006) (meters)</label>
+                    <input type="text" id="edit-project-bounding-box" name="bounding_box" x-model="selectedProject.bounding_box" placeholder="e.g., 100 x 50" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-project-table-dimension">Table Dimension (meters)</label>
+                    <input type="text" id="edit-project-table-dimension" name="table_dimension" x-model="selectedProject.table_dimension" placeholder="e.g., 2 x 1" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                </div>
+                <div class="form-group">
+                    <label for="edit-project-origin">Origin (meters)</label>
+                    <input type="text" id="edit-project-origin" name="origin" x-model="selectedProject.origin" placeholder="e.g., 0, 0" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                    <p style="color: #718096; font-size: 0.75rem; margin-top: 0.25rem;">Format: x, y coordinates</p>
+                </div>
+                <div class="actions">
+                    <button type="submit">Update Project</button>
+                    <button type="button" @click="showEditProject = false" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function projectManager() {
+    return {
+        showAddProject: false,
+        showEditProject: false,
+        selectedProject: {
+            id: null,
+            name: '',
+            description: '',
+            bounding_box: '',
+            table_dimension: '',
+            origin: ''
+        },
+        
+        editProject(project) {
+            this.selectedProject = {
+                id: project.id,
+                name: project.name,
+                description: project.description,
+                bounding_box: project.bounding_box || '',
+                table_dimension: project.table_dimension || '',
+                origin: project.origin || ''
+            };
+            this.showEditProject = true;
+        },
+        
+        updateProject() {
+            const formData = new FormData();
+            formData.append('name', this.selectedProject.name);
+            formData.append('description', this.selectedProject.description || '');
+            formData.append('bounding_box', this.selectedProject.bounding_box || '');
+            formData.append('table_dimension', this.selectedProject.table_dimension || '');
+            formData.append('origin', this.selectedProject.origin || '');
+            
+            fetch(`/projects/${this.selectedProject.id}`, {
+                method: 'PUT',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error('Update failed');
+            })
+            .then(html => {
+                document.getElementById('message').innerHTML = html;
+                this.showEditProject = false;
+                // Reload the projects table
+                htmx.trigger('#projects-table', 'load');
+                // Reload page after a short delay to show updated data
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            })
+            .catch(error => {
+                alert('Error updating project: ' + error.message);
+            });
+        }
+    }
+}
+</script>

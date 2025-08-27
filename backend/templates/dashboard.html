@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="app-container">
+    <div class="sidebar">
+        <div class="sidebar-header" style="display: flex; align-items: center; gap: 0.75rem;">
+            <img src="/static/favicon.png" alt="DTCC" style="width: 32px; height: 32px;">
+            <h2>Dashboard</h2>
+        </div>
+        <div class="sidebar-menu">
+            <div class="menu-section">
+                <div class="menu-title">Main</div>
+                <a href="/projects" class="menu-item {% if active_page == 'projects' %}active{% endif %}">All Projects</a>
+                {% if projects %}
+                <div style="padding-left: 1rem;">
+                    {% for project in projects %}
+                    <a href="/project/{{ project.id }}" class="menu-item {% if active_project_id == project.id %}active{% endif %}" style="padding-left: 2.5rem; font-size: 0.9rem;">
+                        {{ project.name[:20] }}{% if project.name|length > 20 %}...{% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% if user.is_admin %}
+            <div class="menu-section">
+                <div class="menu-title">Administration</div>
+                <a href="/admin" class="menu-item {% if active_page == 'admin' %}active{% endif %}">User Management</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="top-bar">
+            <h1>{{ page_title|default('Dashboard') }}</h1>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <span class="user-info">{{ user.username }}</span>
+                <form method="POST" action="/logout" style="display: inline;">
+                    <button type="submit" class="btn-secondary">Logout</button>
+                </form>
+            </div>
+        </div>
+        <div class="content" id="main-content">
+            {{ page_content|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}

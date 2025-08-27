@@ -1,0 +1,320 @@
+<div class="container" x-data="fileUploader({{ project.id }}, '{{ project.bounding_box|e if project.bounding_box else '' }}')">
+    <div style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2>{{ project.name }}</h2>
+            {% if user.is_admin or project.created_by == user.username %}
+            <button class="btn btn-small" onclick="window.location.href='/projects'">Edit Project</button>
+            {% endif %}
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; color: #4a5568;">Project Details</h3>
+            <div style="display: grid; gap: 1rem;">
+                <div>
+                    <span style="font-weight: 600; color: #718096;">Created by:</span>
+                    <span>{{ project.created_by }}</span>
+                </div>
+                <div>
+                    <span style="font-weight: 600; color: #718096;">Created at:</span>
+                    <span>{{ project.created_at.strftime('%B %d, %Y at %I:%M %p') if project.created_at else 'N/A' }}</span>
+                </div>
+                <div>
+                    <span style="font-weight: 600; color: #718096;">Project ID:</span>
+                    <span>{{ project.id }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: white; border: 2px solid #667eea; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <h4 style="margin-bottom: 0.75rem; color: #4a5568; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Real World Bounding Box (EPSG:3006)</h4>
+            <p style="color: #2d3748; font-size: 1.5rem; font-weight: 600;">
+                {{ project.bounding_box if project.bounding_box else 'Not specified' }}
+            </p>
+            {% if project.bounding_box %}
+            <p style="color: #718096; font-size: 0.875rem; margin-top: 0.5rem;">meters</p>
+            {% endif %}
+        </div>
+        
+        <div style="background: white; border: 2px solid #667eea; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <h4 style="margin-bottom: 0.75rem; color: #4a5568; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Table Dimension</h4>
+            <p style="color: #2d3748; font-size: 1.5rem; font-weight: 600;">
+                {{ project.table_dimension if project.table_dimension else 'Not specified' }}
+            </p>
+            {% if project.table_dimension %}
+            <p style="color: #718096; font-size: 0.875rem; margin-top: 0.5rem;">meters</p>
+            {% endif %}
+        </div>
+        
+        <div style="background: white; border: 2px solid #667eea; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <h4 style="margin-bottom: 0.75rem; color: #4a5568; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Origin</h4>
+            <p style="color: #2d3748; font-size: 1.5rem; font-weight: 600;">
+                {{ project.origin if project.origin else 'Not specified' }}
+            </p>
+            {% if project.origin %}
+            <p style="color: #718096; font-size: 0.875rem; margin-top: 0.5rem;">meters (x, y)</p>
+            {% endif %}
+        </div>
+        
+        <div style="background: white; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 8px;">
+            <h3 style="margin-bottom: 1rem; color: #4a5568;">Description</h3>
+            <p style="color: #4a5568; line-height: 1.6;">
+                {{ project.description if project.description else 'No description provided.' }}
+            </p>
+        </div>
+    </div>
+    
+    <div style="border-top: 2px solid #e2e8f0; padding-top: 2rem;">
+        <h3 style="margin-bottom: 1rem; color: #4a5568;">Media Files</h3>
+        
+        {% if user.is_admin or project.created_by == user.username %}
+        <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+            <h4 style="margin-bottom: 1rem; color: #4a5568;">Upload Files</h4>
+            <div style="border: 2px dashed #cbd5e0; border-radius: 8px; padding: 2rem; text-align: center; position: relative;">
+                <input type="file" 
+                       @change="selectFile($event)" 
+                       accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" 
+                       style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                <div style="pointer-events: none;">
+                    <svg style="width: 48px; height: 48px; margin: 0 auto 1rem; color: #cbd5e0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p style="color: #4a5568; margin-bottom: 0.5rem;">Drop files here or click to upload</p>
+                    <p style="color: #718096; font-size: 0.875rem;">Supported: PNG, JPG, JPEG, MP4, WEBM, MOV</p>
+                </div>
+                <div x-show="uploading" style="position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center;">
+                    <span>Uploading...</span>
+                </div>
+            </div>
+            <div x-show="uploadError" x-text="uploadError" class="error" style="margin-top: 1rem;"></div>
+            <div x-show="uploadSuccess" x-text="uploadSuccess" class="success" style="margin-top: 1rem;"></div>
+            
+            <!-- Bounding Box Modal -->
+            <div x-show="showBoundingBoxModal" 
+                 class="modal" 
+                 style="display: none;" 
+                 x-cloak>
+                <div class="modal-content" style="max-width: 500px;">
+                    <h3 style="margin-bottom: 1rem;">Set Image Bounding Box</h3>
+                    <p style="color: #718096; margin-bottom: 1rem;">Specify the real-world dimensions and position of this image in meters.</p>
+                    <div style="background: #f0f9ff; border: 1px solid #3182ce; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; color: #2c5282;">
+                        <strong>Project boundaries:</strong><br>
+                        {% if project.bounding_box %}
+                        • Dimensions: {{ project.bounding_box }} meters<br>
+                        {% endif %}
+                        {% if project.origin %}
+                        • Origin: {{ project.origin }} meters<br>
+                        • Valid area: from {{ project.origin }} to ({{ project.bounding_box }} + {{ project.origin }})
+                        {% else %}
+                        • Origin: 0, 0 (default)<br>
+                        {% if project.bounding_box %}
+                        • Valid area: from (0, 0) to {{ project.bounding_box }}
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <label for="image-bbox" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Image Bounding Box (meters)</label>
+                        <input type="text" 
+                               id="image-bbox" 
+                               x-model="imageBoundingBox" 
+                               placeholder="e.g., 10 x 5" 
+                               style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                        <p style="color: #718096; font-size: 0.875rem; margin-top: 0.25rem;">Format: width x height</p>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <label for="image-origin" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Image Origin (meters)</label>
+                        <input type="text" 
+                               id="image-origin" 
+                               x-model="imageOrigin" 
+                               placeholder="e.g., 0, 0" 
+                               style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                        <p style="color: #718096; font-size: 0.875rem; margin-top: 0.25rem;">Format: x, y coordinates</p>
+                    </div>
+                    <div class="actions" style="display: flex; gap: 0.5rem;">
+                        <button @click="uploadFileWithBoundingBox()" 
+                                class="btn">
+                            Upload
+                        </button>
+                        <button @click="cancelUpload()" 
+                                class="btn-secondary">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">
+            {% for file in uploaded_files %}
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;" x-data="{ showDeleteConfirm: false }">
+                <div style="aspect-ratio: 1; background: #f8f9fa; position: relative;">
+                    {% if file.file_type == 'video' %}
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1;">
+                        <svg style="width: 48px; height: 48px; color: white; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path>
+                        </svg>
+                    </div>
+                    {% endif %}
+                    <img src="/{{ file.thumbnail_path }}" 
+                         alt="{{ file.original_filename }}" 
+                         style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;"
+                         onclick="window.open('/{{ file.file_path }}', '_blank')">
+                </div>
+                <div style="padding: 0.75rem;">
+                    <p style="font-size: 0.875rem; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
+                       title="{{ file.original_filename }}">
+                        {{ file.original_filename }}
+                    </p>
+                    {% if file.bounding_box %}
+                    <p style="font-size: 0.75rem; color: #667eea; margin-top: 0.25rem; font-weight: 600;">
+                        Size: {{ file.bounding_box }} m
+                    </p>
+                    {% endif %}
+                    {% if file.origin %}
+                    <p style="font-size: 0.75rem; color: #667eea; margin-top: 0.25rem;">
+                        Origin: {{ file.origin }} m
+                    </p>
+                    {% endif %}
+                    <p style="font-size: 0.75rem; color: #718096; margin-top: 0.25rem;">
+                        {{ file.uploaded_at.strftime('%b %d, %Y') }}
+                    </p>
+                    {% if user.is_admin or project.created_by == user.username %}
+                    <button @click="showDeleteConfirm = true" 
+                            class="btn-danger" 
+                            style="width: 100%; margin-top: 0.5rem; padding: 0.5rem; font-size: 0.875rem;">
+                        Delete
+                    </button>
+                    {% endif %}
+                </div>
+                
+                <!-- Delete Confirmation Modal -->
+                <div x-show="showDeleteConfirm" 
+                     class="modal" 
+                     style="display: none;" 
+                     x-cloak>
+                    <div class="modal-content" style="max-width: 400px;">
+                        <h3 style="margin-bottom: 1rem;">Confirm Delete</h3>
+                        <p style="margin-bottom: 1.5rem;">Are you sure you want to delete "{{ file.original_filename }}"?</p>
+                        <div class="actions" style="display: flex; gap: 0.5rem;">
+                            <button @click="deleteFile({{ file.id }})" 
+                                    class="btn-danger">
+                                Yes, Delete
+                            </button>
+                            <button @click="showDeleteConfirm = false" 
+                                    class="btn-secondary">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            {% if not (user.is_admin or project.created_by == user.username) %}
+            <p style="color: #718096; grid-column: 1/-1;">No files uploaded yet.</p>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+function fileUploader(projectId, projectBoundingBox) {
+    return {
+        uploading: false,
+        uploadError: '',
+        uploadSuccess: '',
+        showBoundingBoxModal: false,
+        imageBoundingBox: '',
+        imageOrigin: '',
+        selectedFile: null,
+        projectId: projectId,
+        projectBoundingBox: projectBoundingBox,
+        
+        selectFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            this.selectedFile = file;
+            this.imageBoundingBox = '';
+            this.imageOrigin = '';
+            this.uploadError = '';
+            this.uploadSuccess = '';
+            this.showBoundingBoxModal = true;
+            
+            event.target.value = '';
+        },
+        
+        cancelUpload() {
+            this.showBoundingBoxModal = false;
+            this.selectedFile = null;
+            this.imageBoundingBox = '';
+            this.imageOrigin = '';
+        },
+        
+        uploadFileWithBoundingBox() {
+            if (!this.selectedFile) return;
+            if (!this.imageBoundingBox.trim()) {
+                this.uploadError = 'Please enter the image bounding box';
+                return;
+            }
+            if (!this.imageOrigin.trim()) {
+                this.uploadError = 'Please enter the image origin';
+                return;
+            }
+            
+            this.showBoundingBoxModal = false;
+            this.uploading = true;
+            this.uploadError = '';
+            this.uploadSuccess = '';
+            
+            const formData = new FormData();
+            formData.append('file', this.selectedFile);
+            formData.append('project_id', this.projectId);
+            formData.append('bounding_box', this.imageBoundingBox);
+            formData.append('origin', this.imageOrigin);
+            
+            fetch('/ingest/direct', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.uploading = false;
+                if (data.success) {
+                    this.uploadSuccess = `File "${data.filename}" uploaded successfully!`;
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    this.uploadError = data.error || 'Upload failed';
+                    // Keep modal open on validation error
+                    if (data.error && data.error.includes('exceeds project bounding box')) {
+                        this.showBoundingBoxModal = true;
+                    }
+                }
+            })
+            .catch(error => {
+                this.uploading = false;
+                this.uploadError = 'Upload failed: ' + error.message;
+            });
+        }
+    }
+}
+
+function deleteFile(fileId) {
+    fetch(`/files/${fileId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to delete file');
+        }
+    })
+    .catch(error => {
+        alert('Error deleting file: ' + error.message);
+    });
+}
+</script>

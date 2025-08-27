@@ -1,0 +1,66 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Deploy to EC2
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.EC2_HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          # Navigate to app directory
+          cd /home/ubuntu/dtcc-table || mkdir -p /home/ubuntu/dtcc-table
+          cd /home/ubuntu/dtcc-table
+          
+          # Pull latest code
+          if [ -d ".git" ]; then
+            git pull origin main
+          else
+            git clone https://github.com/${{ github.repository }}.git .
+          fi
+          
+          # Move to backend directory
+          cd backend
+          
+          # Install/update Python dependencies
+          python3.11 -m venv venv || python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          # Stop existing application
+          sudo systemctl stop dtcc-table || true
+          
+          # Copy service file if it doesnt exist
+          if [ ! -f "/etc/systemd/system/dtcc-table.service" ]; then
+            sudo cp dtcc-table.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+          fi
+          
+          # Set environment variables
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" > .env
+          echo "DATABASE_URL=sqlite:///./users.db" >> .env
+          
+          # Ensure upload directories exist
+          mkdir -p static/assets/thumbnails
+          
+          # Start application
+          sudo systemctl start dtcc-table
+          sudo systemctl enable dtcc-table
+          
+          # Check status
+          sudo systemctl status dtcc-table --no-pager
+        '

@@ -1,0 +1,139 @@
+<div class="container" x-data="userManager()">
+    <button @click="showAddUser = true" class="btn" style="margin-bottom: 1rem;">Add New User</button>
+    
+    <div id="message"></div>
+    
+    <div id="users-table" hx-get="/users-table" hx-trigger="load">
+        {% include "users_table.html" %}
+    </div>
+    
+    <div x-show="showAddUser" class="modal" style="display: none;" x-cloak>
+        <div class="modal-content">
+            <h2>Add New User</h2>
+            <form hx-post="/users" hx-target="#users-table" hx-swap="innerHTML" @htmx:after-request="showAddUser = false">
+                <div class="form-group">
+                    <label for="new-username">Username</label>
+                    <input type="text" id="new-username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="new-password">Password</label>
+                    <input type="password" id="new-password" name="password" required>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="is-admin" name="is_admin" value="1">
+                    <label for="is-admin">Admin User</label>
+                </div>
+                <div class="actions">
+                    <button type="submit">Create User</button>
+                    <button type="button" @click="showAddUser = false" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="showChangePassword" class="modal" style="display: none;" x-cloak>
+        <div class="modal-content">
+            <h2>Change Password</h2>
+            <form :hx-post="`/users/${selectedUserId}/password`" hx-target="#message" hx-swap="innerHTML" @htmx:after-request="showChangePassword = false">
+                <div class="form-group">
+                    <label for="change-password">New Password</label>
+                    <input type="password" id="change-password" name="password" required>
+                </div>
+                <div class="actions">
+                    <button type="submit">Update Password</button>
+                    <button type="button" @click="showChangePassword = false" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div x-show="showAssignProjects" class="modal" style="display: none;" x-cloak>
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>Assign Projects to <span x-text="selectedUsername"></span></h2>
+            <div style="margin-bottom: 1rem;">
+                <p style="color: #718096; margin-bottom: 1rem;">Select which projects this user should have access to:</p>
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 5px; padding: 1rem;">
+                    <template x-for="project in allProjects" :key="project.id">
+                        <div style="margin-bottom: 0.5rem;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" 
+                                       :value="project.id" 
+                                       :checked="assignedProjectIds.includes(project.id)"
+                                       @change="toggleProject(project.id)"
+                                       style="margin-right: 0.5rem;">
+                                <span x-text="project.name"></span>
+                            </label>
+                        </div>
+                    </template>
+                    <div x-show="allProjects.length === 0" style="color: #718096; text-align: center;">
+                        No projects available
+                    </div>
+                </div>
+            </div>
+            <div class="actions">
+                <button @click="saveProjectAssignments()" class="btn">Save Assignments</button>
+                <button @click="showAssignProjects = false" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function userManager() {
+    return {
+        showAddUser: false,
+        showChangePassword: false,
+        showAssignProjects: false,
+        selectedUserId: null,
+        selectedUsername: '',
+        allProjects: [],
+        assignedProjectIds: [],
+        
+        assignProjects(userId, username) {
+            this.selectedUserId = userId;
+            this.selectedUsername = username;
+            this.showAssignProjects = true;
+            
+            // Fetch user's projects
+            fetch(`/users/${userId}/projects`)
+                .then(response => response.json())
+                .then(data => {
+                    this.allProjects = data.all_projects || [];
+                    this.assignedProjectIds = data.assigned_project_ids || [];
+                })
+                .catch(error => {
+                    console.error('Error loading projects:', error);
+                    alert('Failed to load projects');
+                });
+        },
+        
+        toggleProject(projectId) {
+            const index = this.assignedProjectIds.indexOf(projectId);
+            if (index > -1) {
+                this.assignedProjectIds.splice(index, 1);
+            } else {
+                this.assignedProjectIds.push(projectId);
+            }
+        },
+        
+        saveProjectAssignments() {
+            const formData = new FormData();
+            formData.append('project_ids', this.assignedProjectIds.join(','));
+            
+            fetch(`/users/${this.selectedUserId}/projects`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('message').innerHTML = '<div class="success">Projects assigned successfully</div>';
+                this.showAssignProjects = false;
+            })
+            .catch(error => {
+                console.error('Error saving assignments:', error);
+                alert('Failed to save project assignments');
+            });
+        }
+    }
+}
+</script>

@@ -1,0 +1,28 @@
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Type</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ "Admin" if user.is_admin else "User" }}</td>
+            <td>
+                <div class="actions">
+                    <button @click="selectedUserId = {{ user.id }}; showChangePassword = true" class="btn" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Change Password</button>
+                    <button @click="assignProjects({{ user.id }}, '{{ user.username }}')" class="btn" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Assign Projects</button>
+                    {% if user.username != "vasnas" %}
+                    <button hx-delete="/users/{{ user.id }}" hx-target="#users-table" hx-swap="innerHTML" hx-confirm="Are you sure you want to delete this user?" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Delete</button>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
