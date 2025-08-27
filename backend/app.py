@@ -490,7 +490,7 @@ def generate_video_thumbnail(input_path: str, output_path: str, size=(200, 200))
         return False
 
 def extract_geopackage_bounds(gpkg_path):
-    """Extract bounding box and centroid from GeoPackage file"""
+    """Extract bounding box and lower corner origin from GeoPackage file"""
     try:
         gdf = gpd.read_file(gpkg_path)
         
@@ -505,9 +505,9 @@ def extract_geopackage_bounds(gpkg_path):
         width = maxx - minx
         height = maxy - miny
         
-        # Calculate origin (centroid)
-        origin_x = (minx + maxx) / 2
-        origin_y = (miny + maxy) / 2
+        # Use lower corner (minx, miny) as origin
+        origin_x = minx
+        origin_y = miny
         
         return {
             'bounding_box': f"{width},{height}",
