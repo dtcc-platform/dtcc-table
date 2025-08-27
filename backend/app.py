@@ -15,6 +15,10 @@ import shutil
 import subprocess
 from pathlib import Path
 import uuid
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./users.db")
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
@@ -485,6 +489,66 @@ def generate_video_thumbnail(input_path: str, output_path: str, size=(200, 200))
         print(f"Error generating video thumbnail: {e}")
         return False
 
+def extract_geopackage_bounds(gpkg_path):
+    """Extract bounding box and centroid from GeoPackage file"""
+    try:
+        gdf = gpd.read_file(gpkg_path)
+        
+        # Convert to EPSG:3006 if not already
+        if gdf.crs and gdf.crs != 'EPSG:3006':
+            gdf = gdf.to_crs('EPSG:3006')
+        
+        # Get the total bounds
+        minx, miny, maxx, maxy = gdf.total_bounds
+        
+        # Calculate bounding box dimensions
+        width = maxx - minx
+        height = maxy - miny
+        
+        # Calculate origin (centroid)
+        origin_x = (minx + maxx) / 2
+        origin_y = (miny + maxy) / 2
+        
+        return {
+            'bounding_box': f"{width},{height}",
+            'origin': f"{origin_x},{origin_y}",
+            'bounds': (minx, miny, maxx, maxy)
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to extract bounds from GeoPackage: {str(e)}")
+
+def generate_geopackage_thumbnail(gpkg_path, thumbnail_path):
+    """Generate thumbnail visualization for GeoPackage file"""
+    try:
+        gdf = gpd.read_file(gpkg_path)
+        
+        # Convert to EPSG:3006 if not already
+        if gdf.crs and gdf.crs != 'EPSG:3006':
+            gdf = gdf.to_crs('EPSG:3006')
+        
+        # Create a small figure for thumbnail
+        fig, ax = plt.subplots(1, 1, figsize=(2, 2))
+        
+        # Plot the geometries
+        gdf.plot(ax=ax, color='steelblue', edgecolor='black', linewidth=0.5)
+        
+        # Remove axes for cleaner look
+        ax.set_axis_off()
+        
+        # Save the thumbnail
+        plt.savefig(thumbnail_path, bbox_inches='tight', dpi=100, pad_inches=0.1)
+        plt.close(fig)
+        
+    except Exception as e:
+        # If visualization fails, create a placeholder thumbnail
+        img = Image.new('RGB', (200, 200), color='lightgray')
+        draw = ImageDraw.Draw(img)
+        try:
+            draw.text((50, 90), "GPKG", fill='black')
+        except:
+            pass
+        img.save(thumbnail_path)
+
 @app.delete("/files/{file_id}")
 async def delete_file(file_id: int, request: Request = None, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
@@ -598,8 +662,8 @@ def validate_image_placement(image_bbox_str, image_origin_str, project_bbox_str,
 async def upload_file(
     file: UploadFile = File(...),
     project_id: int = Form(...),
-    bounding_box: str = Form(...),
-    origin: str = Form(...),
+    bounding_box: str = Form(None),
+    origin: str = Form(None),
     request: Request = None,
     db: Session = Depends(get_db)
 ):
@@ -614,14 +678,7 @@ async def upload_file(
     if not user.is_admin and project.created_by != user.username:
         return JSONResponse(content={"error": "Permission denied"}, status_code=403)
     
-    # Validate image placement within project boundaries
-    is_valid, error_msg = validate_image_placement(
-        bounding_box, origin, project.bounding_box, project.origin
-    )
-    if not is_valid:
-        return JSONResponse(content={"error": error_msg}, status_code=400)
-    
-    allowed_extensions = {'.png', '.jpg', '.jpeg', '.mp4', '.webm', '.mov'}
+    allowed_extensions = {'.png', '.jpg', '.jpeg', '.mp4', '.webm', '.mov', '.gpkg'}
     file_ext = Path(file.filename).suffix.lower()
     
     if file_ext not in allowed_extensions:
@@ -642,12 +699,33 @@ async def upload_file(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        if file_ext in ['.png', '.jpg', '.jpeg']:
-            generate_image_thumbnail(file_path, thumbnail_path)
-            file_type = "image"
-        elif file_ext in ['.mp4', '.webm', '.mov']:
-            generate_video_thumbnail(file_path, thumbnail_path)
-            file_type = "video"
+        # Handle GeoPackage files differently
+        if file_ext == '.gpkg':
+            # Extract bounds from the GeoPackage
+            bounds_data = extract_geopackage_bounds(file_path)
+            bounding_box = bounds_data['bounding_box']
+            origin = bounds_data['origin']
+            
+            # Generate thumbnail
+            generate_geopackage_thumbnail(file_path, thumbnail_path)
+            file_type = "geopackage"
+        else:
+            # For non-geopackage files, validate placement
+            if not bounding_box or not origin:
+                return JSONResponse(content={"error": "Bounding box and origin required for non-GeoPackage files"}, status_code=400)
+            
+            is_valid, error_msg = validate_image_placement(
+                bounding_box, origin, project.bounding_box, project.origin
+            )
+            if not is_valid:
+                return JSONResponse(content={"error": error_msg}, status_code=400)
+            
+            if file_ext in ['.png', '.jpg', '.jpeg']:
+                generate_image_thumbnail(file_path, thumbnail_path)
+                file_type = "image"
+            elif file_ext in ['.mp4', '.webm', '.mov']:
+                generate_video_thumbnail(file_path, thumbnail_path)
+                file_type = "video"
         
         uploaded_file = UploadedFile(
             filename=safe_filename,

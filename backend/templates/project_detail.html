@@ -72,14 +72,14 @@
             <div style="border: 2px dashed #cbd5e0; border-radius: 8px; padding: 2rem; text-align: center; position: relative;">
                 <input type="file" 
                        @change="selectFile($event)" 
-                       accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" 
+                       accept=".png,.jpg,.jpeg,.mp4,.webm,.mov,.gpkg" 
                        style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
                 <div style="pointer-events: none;">
                     <svg style="width: 48px; height: 48px; margin: 0 auto 1rem; color: #cbd5e0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                     </svg>
                     <p style="color: #4a5568; margin-bottom: 0.5rem;">Drop files here or click to upload</p>
-                    <p style="color: #718096; font-size: 0.875rem;">Supported: PNG, JPG, JPEG, MP4, WEBM, MOV</p>
+                    <p style="color: #718096; font-size: 0.875rem;">Supported: PNG, JPG, JPEG, MP4, WEBM, MOV, GPKG</p>
                 </div>
                 <div x-show="uploading" style="position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center;">
                     <span>Uploading...</span>
@@ -239,9 +239,50 @@ function fileUploader(projectId, projectBoundingBox) {
             this.imageOrigin = '';
             this.uploadError = '';
             this.uploadSuccess = '';
-            this.showBoundingBoxModal = true;
+            
+            // Check if it's a GeoPackage file
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.gpkg')) {
+                // For GeoPackage files, upload directly without bounding box modal
+                this.uploadGeoPackage();
+            } else {
+                // For other files, show bounding box modal
+                this.showBoundingBoxModal = true;
+            }
             
             event.target.value = '';
+        },
+        
+        uploadGeoPackage() {
+            this.uploading = true;
+            this.uploadError = '';
+            this.uploadSuccess = '';
+            
+            const formData = new FormData();
+            formData.append('file', this.selectedFile);
+            formData.append('project_id', this.projectId);
+            // No bounding_box or origin needed for GeoPackage
+            
+            fetch('/ingest/direct', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.uploading = false;
+                if (data.success) {
+                    this.uploadSuccess = `GeoPackage "${data.filename}" uploaded successfully!`;
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    this.uploadError = data.error || 'Upload failed';
+                }
+            })
+            .catch(error => {
+                this.uploading = false;
+                this.uploadError = 'Upload failed: ' + error.message;
+            });
         },
         
         cancelUpload() {
