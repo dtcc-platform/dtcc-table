@@ -492,10 +492,26 @@ def generate_video_thumbnail(input_path: str, output_path: str, size=(200, 200))
 def extract_geopackage_bounds(gpkg_path):
     """Extract bounding box and lower corner origin from GeoPackage file"""
     try:
-        gdf = gpd.read_file(gpkg_path)
+        # Try different methods to read the GeoPackage
+        gdf = None
+        try:
+            # Primary method
+            gdf = gpd.read_file(gpkg_path)
+        except Exception as e1:
+            try:
+                # Fallback: specify driver explicitly
+                gdf = gpd.read_file(gpkg_path, driver='GPKG')
+            except Exception as e2:
+                # Last resort: try with fiona directly
+                import fiona
+                with fiona.open(gpkg_path, 'r') as src:
+                    gdf = gpd.GeoDataFrame.from_features(src)
+        
+        if gdf is None or gdf.empty:
+            raise ValueError("Could not read GeoPackage or file is empty")
         
         # Convert to EPSG:3006 if not already
-        if gdf.crs and gdf.crs != 'EPSG:3006':
+        if gdf.crs and str(gdf.crs) != 'EPSG:3006':
             gdf = gdf.to_crs('EPSG:3006')
         
         # Get the total bounds
