@@ -146,7 +146,7 @@
         
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">
             {% for file in uploaded_files %}
-            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;" x-data="{ showDeleteConfirm: false }">
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;" x-data="{ showDeleteConfirm: false, showPreview: false }">
                 <div style="aspect-ratio: 1; background: #f8f9fa; position: relative;">
                     {% if file.file_type == 'video' %}
                     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1;">
@@ -157,8 +157,7 @@
                     {% endif %}
                     <img src="/{{ file.thumbnail_path }}" 
                          alt="{{ file.original_filename }}" 
-                         style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;"
-                         onclick="window.open('/{{ file.file_path }}', '_blank')">
+                         style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
                 <div style="padding: 0.75rem;">
                     <p style="font-size: 0.875rem; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
@@ -190,6 +189,11 @@
                     <p style="font-size: 0.75rem; color: #718096; margin-top: 0.25rem;">
                         {{ file.uploaded_at.strftime('%b %d, %Y') }}
                     </p>
+                    <button @click="showPreview = true" 
+                            class="btn-primary" 
+                            style="width: 100%; margin-top: 0.5rem; padding: 0.5rem; font-size: 0.875rem;">
+                        Project
+                    </button>
                     {% if user.is_admin or project.created_by == user.username %}
                     <button @click="showDeleteConfirm = true" 
                             class="btn-danger" 
@@ -217,6 +221,62 @@
                                 Cancel
                             </button>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Preview Modal -->
+                <div x-show="showPreview" 
+                     class="modal" 
+                     id="preview-modal-{{ file.id }}"
+                     style="background: rgba(0, 0, 0, 0.95);" 
+                     x-cloak
+                     @click="showPreview = false"
+                     @keydown.escape.window="showPreview = false"
+                     @keydown.f.window="if(showPreview) toggleFullscreen('preview-modal-{{ file.id }}')">
+                    <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                        <!-- Close button -->
+                        <button @click="showPreview = false" 
+                                style="position: absolute; top: 1rem; right: 1rem; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; z-index: 10;">
+                            ✕ Close
+                        </button>
+                        
+                        <!-- Fullscreen indicator -->
+                        <div style="position: absolute; top: 1rem; right: 6rem; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 0.5rem 1rem; border-radius: 4px; z-index: 10; cursor: default;"
+                             title="Press F for fullscreen">
+                            ⛶ Fullscreen (F)
+                        </div>
+                        
+                        <!-- File info overlay -->
+                        <div style="position: absolute; bottom: 1rem; left: 1rem; color: white; background: rgba(0, 0, 0, 0.7); padding: 1rem; border-radius: 8px; max-width: 400px;">
+                            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">{{ file.original_filename }}</h3>
+                            {% if file.bounding_box %}
+                            <p style="margin: 0.25rem 0; font-size: 0.875rem;">Actual Size: {{ file.bounding_box }} m</p>
+                            {% endif %}
+                            {% if file.processed_size %}
+                                {% set proc_parts = file.processed_size.split(':') %}
+                                {% if proc_parts[0] == 'clipped' %}
+                                <p style="margin: 0.25rem 0; font-size: 0.875rem; color: #fc8181;">Clipped to: {{ proc_parts[1] }} m</p>
+                                {% elif proc_parts[0] == 'expanded' %}
+                                <p style="margin: 0.25rem 0; font-size: 0.875rem; color: #68d391;">Expanded to: {{ proc_parts[1] }} m</p>
+                                {% endif %}
+                            {% endif %}
+                            {% if file.origin %}
+                            <p style="margin: 0.25rem 0; font-size: 0.875rem;">Origin: {{ file.origin }} m</p>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Content display -->
+                        {% if file.file_type == 'video' %}
+                        <video controls style="max-width: 90%; max-height: 90%; object-fit: contain;">
+                            <source src="/{{ file.file_path }}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        {% else %}
+                        <img src="/{{ file.file_path }}" 
+                             alt="{{ file.original_filename }}" 
+                             style="max-width: 90%; max-height: 90%; object-fit: contain;"
+                             @click.stop="">
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -369,5 +429,48 @@ function deleteFile(fileId) {
     .catch(error => {
         alert('Error deleting file: ' + error.message);
     });
+}
+
+function toggleFullscreen(elementId) {
+    // Need a small delay to ensure the element is visible
+    setTimeout(() => {
+        const elem = document.getElementById(elementId);
+        if (!elem) {
+            console.error('Element not found:', elementId);
+            return;
+        }
+        
+        if (!document.fullscreenElement && !document.mozFullScreenElement && 
+            !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            // Enter fullscreen
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(err => {
+                    console.error('Failed to enter fullscreen:', err);
+                    // Try alternative: make the image/video itself fullscreen
+                    const media = elem.querySelector('img, video');
+                    if (media && media.requestFullscreen) {
+                        media.requestFullscreen();
+                    }
+                });
+            } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+                elem.mozRequestFullScreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+            }
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }, 100); // Small delay to ensure Alpine.js has updated the DOM
 }
 </script>
