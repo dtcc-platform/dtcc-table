@@ -230,24 +230,28 @@
                      id="preview-modal-{{ file.id }}"
                      style="background: rgba(0, 0, 0, 0.95);" 
                      x-cloak
+                     x-data="{ isFullscreen: false }"
                      @click="showPreview = false"
                      @keydown.escape.window="showPreview = false"
                      @keydown.f.window="if(showPreview) toggleFullscreen('preview-modal-{{ file.id }}')">
-                    <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;" :style="isFullscreen ? 'padding: 0;' : 'padding: 2rem;'">
                         <!-- Close button -->
                         <button @click="showPreview = false" 
+                                x-show="!isFullscreen"
                                 style="position: absolute; top: 1rem; right: 1rem; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; z-index: 10;">
                             ✕ Close
                         </button>
                         
                         <!-- Fullscreen indicator -->
-                        <div style="position: absolute; top: 1rem; right: 6rem; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 0.5rem 1rem; border-radius: 4px; z-index: 10; cursor: default;"
+                        <div x-show="!isFullscreen"
+                             style="position: absolute; top: 1rem; right: 6rem; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 0.5rem 1rem; border-radius: 4px; z-index: 10; cursor: default;"
                              title="Press F for fullscreen">
                             ⛶ Fullscreen (F)
                         </div>
                         
                         <!-- File info overlay -->
-                        <div style="position: absolute; bottom: 1rem; left: 1rem; color: white; background: rgba(0, 0, 0, 0.7); padding: 1rem; border-radius: 8px; max-width: 400px;">
+                        <div x-show="!isFullscreen"
+                             style="position: absolute; bottom: 1rem; left: 1rem; color: white; background: rgba(0, 0, 0, 0.7); padding: 1rem; border-radius: 8px; max-width: 400px;">
                             <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">{{ file.original_filename }}</h3>
                             {% if file.bounding_box %}
                             <p style="margin: 0.25rem 0; font-size: 0.875rem;">Actual Size: {{ file.bounding_box }} m</p>
@@ -267,14 +271,14 @@
                         
                         <!-- Content display -->
                         {% if file.file_type == 'video' %}
-                        <video controls style="max-width: 90%; max-height: 90%; object-fit: contain;">
+                        <video controls :style="isFullscreen ? 'width: 100%; height: 100%; object-fit: cover;' : 'max-width: 90%; max-height: 90%; object-fit: contain;'">
                             <source src="/{{ file.file_path }}" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
                         {% else %}
                         <img src="/{{ file.file_path }}" 
                              alt="{{ file.original_filename }}" 
-                             style="max-width: 90%; max-height: 90%; object-fit: contain;"
+                             :style="isFullscreen ? 'width: 100%; height: 100%; object-fit: cover;' : 'max-width: 90%; max-height: 90%; object-fit: contain;'"
                              @click.stop="">
                         {% endif %}
                     </div>
@@ -440,11 +444,16 @@ function toggleFullscreen(elementId) {
             return;
         }
         
+        // Get Alpine.js component
+        const alpineComponent = elem._x_dataStack && elem._x_dataStack[0];
+        
         if (!document.fullscreenElement && !document.mozFullScreenElement && 
             !document.webkitFullscreenElement && !document.msFullscreenElement) {
             // Enter fullscreen
             if (elem.requestFullscreen) {
-                elem.requestFullscreen().catch(err => {
+                elem.requestFullscreen().then(() => {
+                    if (alpineComponent) alpineComponent.isFullscreen = true;
+                }).catch(err => {
                     console.error('Failed to enter fullscreen:', err);
                     // Try alternative: make the image/video itself fullscreen
                     const media = elem.querySelector('img, video');
@@ -454,23 +463,50 @@ function toggleFullscreen(elementId) {
                 });
             } else if (elem.msRequestFullscreen) {
                 elem.msRequestFullscreen();
+                if (alpineComponent) alpineComponent.isFullscreen = true;
             } else if (elem.mozRequestFullScreen) {
                 elem.mozRequestFullScreen();
+                if (alpineComponent) alpineComponent.isFullscreen = true;
             } else if (elem.webkitRequestFullscreen) {
                 elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+                if (alpineComponent) alpineComponent.isFullscreen = true;
             }
         } else {
             // Exit fullscreen
             if (document.exitFullscreen) {
-                document.exitFullscreen();
+                document.exitFullscreen().then(() => {
+                    if (alpineComponent) alpineComponent.isFullscreen = false;
+                });
             } else if (document.msExitFullscreen) {
                 document.msExitFullscreen();
+                if (alpineComponent) alpineComponent.isFullscreen = false;
             } else if (document.mozCancelFullScreen) {
                 document.mozCancelFullScreen();
+                if (alpineComponent) alpineComponent.isFullscreen = false;
             } else if (document.webkitExitFullscreen) {
                 document.webkitExitFullscreen();
+                if (alpineComponent) alpineComponent.isFullscreen = false;
             }
         }
     }, 100); // Small delay to ensure Alpine.js has updated the DOM
+}
+
+// Listen for fullscreen changes to update Alpine.js state
+document.addEventListener('fullscreenchange', updateFullscreenState);
+document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+document.addEventListener('mozfullscreenchange', updateFullscreenState);
+document.addEventListener('msfullscreenchange', updateFullscreenState);
+
+function updateFullscreenState() {
+    const isFullscreen = !!(document.fullscreenElement || document.mozFullScreenElement || 
+                           document.webkitFullscreenElement || document.msFullscreenElement);
+    
+    // Update all preview modals' fullscreen state
+    document.querySelectorAll('[id^="preview-modal-"]').forEach(modal => {
+        const alpineComponent = modal._x_dataStack && modal._x_dataStack[0];
+        if (alpineComponent) {
+            alpineComponent.isFullscreen = isFullscreen;
+        }
+    });
 }
 </script>
